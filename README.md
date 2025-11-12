@@ -1,10 +1,14 @@
 <p align="center">
-  <img src="logo.png" alt="MoeDB Logo" width="300"/>
+  <img src="logo.png" alt="MoeDB Logo" width="300"/>
 </p>
 
 # MoeDB: Japanese Content Difficulty Database
 
 MoeDB is a free, open-source database designed to assist Japanese language learners. The project provides a public list of media, including anime, dorama, and movies, that has been sorted and ranked according to its estimated linguistic difficulty.
+
+<p align="center">
+  <img src="demonstration.gif" alt="MoeDB Website Demonstration" width="700"/>
+</p>
 
 The database allows users to quickly identify content that matches their current Japanese skill level, helping them select effective immersion material.
 
@@ -24,10 +28,10 @@ The core function of MoeDB is the analysis of content difficulty. This process i
 
 ### Data Source and Processing
 
-1.  **Data Source:** The analysis relies on subtitle files sourced from the **kitsunekko-mirror** GitHub repository.
-2.  **Subtitle Cleanup:** The script first cleans and standardizes the format of the raw subtitle files, which is necessary due to inconsistencies in the source data.
-3.  **Filtering:** To ensure accurate scoring, the script removes non-vocabulary elements from the dialogue, such as proper nouns, sound effects, interjections, and numbers.
-4.  **Vocabulary Rarity Scoring:** The remaining vocabulary (nouns, verbs, adjectives) is scored based on its frequency in the Japanese language using standard libraries.
+1.  **Data Source:** The analysis relies on subtitle files sourced from the **kitsunekko-mirror** GitHub repository.
+2.  **Subtitle Cleanup:** The script first cleans and standardizes the format of the raw subtitle files, which is necessary due to inconsistencies in the source data.
+3.  **Filtering:** To ensure accurate scoring, the script removes non-vocabulary elements from the dialogue, such as proper nouns, sound effects, interjections, and numbers.
+4.  **Vocabulary Rarity Scoring:** The remaining vocabulary (nouns, verbs, adjectives) is scored based on its frequency in the Japanese language using standard libraries.
 
 ### Core Metric: Vocab Density (%)
 
