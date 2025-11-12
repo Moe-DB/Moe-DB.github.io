@@ -522,14 +522,13 @@ function renderMediaCard(item) {
         imageAlt = item['Anime Title'] || item['english_name'] || 'Poster';
     }
 
-    if (imageUrl) {
-        const img = document.createElement('img');
-        img.src = imageUrl;
-        img.alt = imageAlt;
-        img.className = 'poster';
-        img.loading = 'lazy';
-        posterSection.appendChild(img);
-    }
+    // Always create an img element, use placeholder if no poster available
+    const img = document.createElement('img');
+    img.src = imageUrl || 'img/no_image.png';
+    img.alt = imageAlt;
+    img.className = 'poster';
+    img.loading = 'lazy';
+    posterSection.appendChild(img);
     
         card.appendChild(posterSection);
 
