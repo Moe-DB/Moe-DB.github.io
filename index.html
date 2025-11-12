@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoeDB</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <nav class="main-nav">
+                <div class="nav-left">
+                    <a href="index.html" class="nav-link active">Home</a>
+                    <a href="about.html" class="nav-link">About</a>
+                </div>
+                <div class="nav-right">
+                    <a href="#" class="nav-link" id="github-link">GitHub</a>
+                </div>
+            </nav>
+            <h1>MoeDB</h1>
+            <p>Your ultimate database for discovering and exploring Japanese media.</p>
+        </div>
+
+        <div class="main-layout">
+            <div class="filter-menu">
+                <h2>Filters</h2>
+                <label class="filter-checkbox" style="margin-bottom: 1em; display: block;">
+                    <input type="checkbox" id="toggle-img-btn">
+                    Hide entries without poster
+                </label>
+                <div class="filter-section">
+                    <h3>Entry Type</h3>
+                    <div id="entry-type-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Genres</h3>
+                    <div id="genres-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Status</h3>
+                    <div id="status-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Episodes</h3>
+                    <div id="episodes-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Year</h3>
+                    <div id="year-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Score</h3>
+                    <div id="score-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Vocab Density</h3>
+                    <div id="vocab-density-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Kanji Difficulty</h3>
+                    <div id="kanji-difficulty-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Vocab Difficulty</h3>
+                    <div id="vocab-difficulty-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Overall Difficulty</h3>
+                    <div id="overall-difficulty-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Avg. Words/Episode</h3>
+                    <div id="avg-words-episode-filter"></div>
+                </div>
+                <div class="filter-section">
+                    <h3>Unique Words</h3>
+                    <div id="unique-words-filter"></div>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <div class="controls-bar">
+                    <div class="controls-row">
+                        <div class="control-group">
+                            <label for="titles-per-row-select">Titles per row:</label>
+                            <select id="titles-per-row-select">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4" selected>4</option>
+                                <option value="5">5</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label for="sort-by-select">Sort by:</label>
+                            <select id="sort-by-select">
+                                <option value="vocab_density" selected>Vocab Density</option>
+                                <option value="overall_difficulty">Overall Difficulty</option>
+                                <option value="kanji_difficulty">Kanji Difficulty</option>
+                                <option value="vocab_difficulty">Vocab Difficulty</option>
+                                <option value="avg_words_episode">Avg. Words/Episode</option>
+                                <option value="unique_words">Unique Words</option>
+                                <option value="score">Score</option>
+                                <option value="year">Year</option>
+                                <option value="episodes">Episodes</option>
+                                <option value="Anime Title">Title</option>
+                                <option value="english_name">English Title</option>
+                                <option value="japanese_name">Japanese Title</option>
+                            </select>
+                            <button id="sort-direction-btn" class="sort-direction-btn" data-direction="asc">▲</button>
+                        </div>
+                        <div class="control-group" style="flex: 1;">
+                            <input type="text" id="search-input" placeholder="Search titles...">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pagination-controls">
+                    <button id="prev-page-btn">← Previous</button>
+                    <span id="page-info">Page 1 of 1</span>
+                    <button id="next-page-btn">Next →</button>
+                </div>
+
+                <div id="media-list"></div>
+
+                <div class="pagination-controls">
+                    <button id="prev-page-btn-bottom">← Previous</button>
+                    <span id="page-info-bottom">Page 1 of 1</span>
+                    <button id="next-page-btn-bottom">Next →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

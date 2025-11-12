@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - MoeDB</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <nav class="main-nav">
+                <div class="nav-left">
+                    <a href="index.html" class="nav-link">Home</a>
+                    <a href="about.html" class="nav-link active">About</a>
+                </div>
+                <div class="nav-right">
+                    <a href="#" class="nav-link" id="github-link">GitHub</a>
+                </div>
+            </nav>
+            <h1>MoeDB</h1>
+            <p>Your ultimate database for discovering and exploring Japanese media.</p>
+        </div>
+
+        <div class="main-content">
+                <div class="about-content">
+                    <div class="faq-section">
+                        <h2 class="faq-question">What is this website?</h2>
+                        <div class="faq-answer">
+                            <p>I created this website to make it easier to find Japanese content (like dorama, anime, etc.) based on its difficulty. I was frustrated because I felt the list of content on other sites, like jpdb, was too short. So, I decided to build something similar myself, but with a much bigger database of media.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-section">
+                        <h2 class="faq-question">What functions does this website have?</h2>
+                        <div class="faq-answer">
+                            <p>It's a big, searchable list of Japanese content sorted by difficulty. You can use different filters to find what you want.</p>
+                            <p>My main goal was just to search by difficulty, so you won't find things like Anki integration or spaced repetition (SRS) features. I'm just focused on the difficulty search for now. Maybe I'll think about adding those other features in the future.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-section">
+                        <h2 class="faq-question">What kind of media is on here?</h2>
+                        <div class="faq-answer">
+                            <p>It has all kinds of Japanese media. It starts with the obvious stuff like anime TV series and anime movies, but I've also included Japanese documentaries, history movies, random dorama (live-action dramas), and even some YouTube content. I plan to keep adding more.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-section">
+                        <h2 class="faq-question">How did you create this database?</h2>
+                        <div class="faq-answer">
+                            <p>I wrote a script that automatically analyzed the <strong>entire</strong> database of subtitles from the <a href="https://github.com/Ajatt-Tools/kitsunekko-mirror">kitsunekko-mirror</a> GitHub repository. After it finished running, I ended up with <strong>over 9,000 different entries</strong> for all kinds of media, which is what you see on the site.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-section">
+                        <h2 class="faq-question">How accurate is the analysis?</h2>
+                        <div class="faq-answer">
+                            <p>It's pretty accurate, I'd say about 99%. It took me a long time to get it right; I made over five different versions of the script.</p>
+                            <p>The main problem was that every single subtitle file on kitsunekko-mirror uses a different style or format. I first had to write code to clean and format all of them before I could even start analyzing the words.</p>
+                            <p>If you're interested, you can find all the original scripts I used on this project's GitHub repository. Feel free to check them out or improve them.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-section">
+                        <h2 class="faq-question">How does the script work (in more detail)?</h2>
+                        <div class="faq-answer">
+                            <p>The script analyzes every word in the subtitle files for a show. First, it's smart enough to filter out all the "junk" words that don't count as real vocabulary, like:</p>
+                            <ul class="feature-list">
+                                <li>Proper names (like "Tanaka" or "Tokyo")</li>
+                                <li>Sound effects (like ざっ or ミーミー)</li>
+                                <li>Interjections (like あっ or ええ)</li>
+                                <li>Numbers</li>
+                                <li>Foreign words</li>
+                            </ul>
+                            <p>After it filters all that out, it's left with a clean list of "real" vocabulary—like nouns, verbs, and adjectives.</p>
+                            <p>For every "real" word, it uses a frequency library (wordfreq) to check how common or rare it is in the general Japanese language. It then gives each word a "rarity score."</p>
+                            <p>The <strong>"Vocab Density %"</strong> is the main number I recommend using. It's calculated by counting all the words that pass a certain "rarity" threshold (in the script, this is <code>DIFFICULTY_THRESHOLD = 5.0</code>).</p>
+                            <p>In simple terms: <strong>this percentage tells you how many "difficult" or "rare" words you can expect to find in the show.</strong> A low percentage (like 5%) means almost all the words are common and the show is easy. A high percentage (like 20%) means the show uses a lot of rare vocabulary and is much more difficult.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-section">
+                        <h2 class="faq-question">How do you recommend I use this website?</h2>
+                        <div class="faq-answer">
+                            <p>To understand how hard a show is, I really recommend you look at the <strong>"Vocab Density %"</strong> number. I believe this is the most accurate way to judge difficulty.</p>
+                            <p>You can, of course, look at other things like "Kanji Difficulty" or "Vocab Difficulty (1-100)," but the "Vocab Density %" is the most direct and accurate measurement of how many rare words you'll run into.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-section">
+                        <h2 class="faq-question">What features are you planning to add in the future?</h2>
+                        <div class="faq-answer">
+                            <p>I would really love to add Anki integration in the future. The idea would be that you could one-click-add all the words from a show right into your Anki deck.</p>
+                            <p>I don't think it would be <em>that</em> hard to do, but it would require me to completely re-process my entire database and change how the data is structured. So, it's something I'll definitely consider doing, but it's a future plan.</p>
+                        </div>
+                    </div>
+                </div>
+        </div>
+    </div>
+</body>
+</html>
