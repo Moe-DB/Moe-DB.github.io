@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 
 """
-Anime Subtitle Linguistic Difficulty Analyzer (v12 - Noise & Sound Filter)
+Anime Subtitle Linguistic Difficulty Analyzer (v12 -> merged with debug v19 subtitle logic)
 
 This script analyzes a library of anime subtitles to calculate and compare
 linguistic difficulty.
 
-This version (v12) adds a new heuristic filter to catch sound effects,
-onomatopoeia, and other "noise" words that are often mis-tagged
-by Sudachi as valid Nouns or Adverbs (e.g., ざっ, ミーミー, コレガ).
-
-These noise words have a low zipf frequency, giving them a high difficulty
-score and skewing the results.
-
-The new logic (step 2g) filters them out by:
-1. Detecting repetitive patterns (e.g., ミーミー).
-2. Detecting short, kana-only words (e.g., ざっ, ぐつ, コレガ) and
-   filtering them if their zipf frequency is below a certain
-   threshold (3.5), indicating they are "noise" and not "real" words.
+Merged changes from your debug script:
+- Improved, more flexible SRT regex to detect blocks with varied whitespace/line endings.
+- ASS parsing: only lines starting with "Dialogue:" are processed; use split(',', 9) to extract text.
+- Better cleaning: nested furigana removal, parentheses cleaning, tag/style removal, spacing normalization.
+- Non-recursive subtitle discovery: only analyze .srt/.ass files directly inside each anime folder.
+- Katakana loanword filter: ignore rare katakana-only lemmas (using zipf_frequency threshold).
+- Keep existing v12 noise filters and other heuristics intact.
 """
 
 import os
@@ -41,42 +36,42 @@ except ImportError:
     exit(1)
 
 # --- Configuration ---
-# C:/Users/user/Desktop/kitsunekko-mirror/subtitles
 ROOT_DIR = "C:/Users/user/Desktop/kitsunekko-mirror/subtitles"
 NUM_PROCESSES = cpu_count()
 MIN_AVG_WORDS_PER_EP = 200
 MIN_UNIQUE_WORDS = 300
 DIFFICULTY_THRESHOLD = 5.0
 # V12 ADD: Zipf threshold for filtering "noise" words.
-# Real words (ゲーム, これ, とても) are > 5.0. Noise (ざっ, ぐつ, ぴり) is < 3.5.
 NOISE_ZIPF_THRESHOLD = 3.5
 
-# --- Regular Expressions ---
+# --- Regex (merged from debug v19 + main v12) ---
+# Improved flexible SRT regex (from debug script) -- captures index, start, end, text block
 RE_SRT = re.compile(
-    r"\d+\r?\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\r?\n(.*?)\r?\n\r?\n",
-    re.DOTALL
+    r"(\d+)\s*[\r\n]+(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})\s*[\r\n]+((?:.*(?:\r\n|\r|\n))*?)(?=\d+\s*[\r\n]+\d{2}:\d{2}:\d{2}|$)",
+    re.MULTILINE
 )
-RE_ASS = re.compile(
-    r"^Dialogue:\s*([^,]*?,){9}(.*)",
-    re.IGNORECASE
-)
+
+# ASS pattern is not used to parse the text field here anymore; we use the more robust split method below.
+RE_ASS = re.compile(r"^Dialogue:\s*([^,]*?,){9}(.*)", re.IGNORECASE)
+
 RE_TAGS = re.compile(r"<[^>]+>")
 RE_ASS_STYLE = re.compile(r"\{[^}]+\}")
-RE_BRACKETS_WESTERN = re.compile(r"\(.*?\)")
-RE_BRACKETS_JP = re.compile(r"（.*?）")
+# nested furigana: (かな) inside full-width parentheses like （中野(なかの)）
+RE_NESTED_FURIGANA = re.compile(r'\([ぁ-んァ-ヶー]+\)')
+RE_BRACKETS_WESTERN = re.compile(r"\([^)]*\)")
+RE_BRACKETS_JP = re.compile(r"（[^）]*）")
 RE_SPACING = re.compile(r"[ \t\u3000]+")
 RE_HAS_HIRAGANA = re.compile(r"[\u3040-\u309F]")
 RE_KANJI = re.compile(r"[\u4E00-\u9FFF]")
 RE_FOREIGN_WORD_CHECK = re.compile(r"[a-zA-Z\u0400-\u04FF]")
 
-# V12 FIX: Added 'ッ' and 'っ' (small tsu) to correctly match words like ざっ, アハハッ
+# V12 FIX: Added 'ッ' and 'っ' (small tsu)
 RE_IS_JAPANESE = re.compile(r'^[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFFーッっ]+$')
 
-# V12 ADD: Filters for sound/noise words mis-tagged as Nouns/Adverbs
-# Matches repetitive sounds (e.g., ミーミー, ヘヘヘヘ, ニャーニャー)
+# Sound/noise filters
 RE_REPETITIVE_SOUND = re.compile(r'^(.{1,3})\1+$')
-# Matches short (2-4 char) kana-only "noise" (e.g., ざっ, ぐつ, ぴり, コレガ)
 RE_PURE_KANA_NOISE = re.compile(r'^[\u3040-\u309F\u30A0-\u30FFーッっ]{2,4}$')
+RE_IS_KANA_ONLY = re.compile(r'^[\u3040-\u309F\u30A0-\u30FFーッっ]+$')
 
 # --- Scoring Mappings ---
 KANJI_SCORE_MAP = {
@@ -91,59 +86,79 @@ KANJI_SCORE_MAP = {
     None: 10  # Non-Jōyō / Unknown
 }
 
-
+# --- Cleaning function (from debug) ---
 def clean_line(line: str) -> str:
-    line = RE_BRACKETS_WESTERN.sub("", line)
+    """Clean subtitle line with proper handling of nested parentheses/furigana."""
+    # First, handle nested furigana: （中野(なかの)） -> （中野）
+    line = RE_NESTED_FURIGANA.sub("", line)
+
+    # Now remove remaining parentheses content
     line = RE_BRACKETS_JP.sub("", line)
+    line = RE_BRACKETS_WESTERN.sub("", line)
+
+    # Continue with other cleaning
     line = RE_ASS_STYLE.sub("", line)
     line = RE_TAGS.sub("", line)
     line = RE_SPACING.sub("", line)
     line = line.replace(r"\N", "|").replace(r"\r\n", "|").replace(r"\n", "|").replace(r"\r", "|")
     line = line.strip()
+
     return line
 
-
+# --- Extraction function (merged behavior) ---
 def extract_text_from_file(file_path: Path) -> list[str]:
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
-    except Exception as e:
+    except Exception:
         return []
 
     file_ext = file_path.suffix.lower()
     raw_lines = []
 
     if file_ext == '.srt':
-        raw_lines = RE_SRT.findall(content)
+        # Use improved SRT regex to find text blocks
+        matches = RE_SRT.findall(content)
+        # matches[i][3] contains the text content
+        raw_lines = [match[3] for match in matches]
+
     elif file_ext == '.ass':
         for line in content.splitlines():
-            match = RE_ASS.match(line)
-            if match:
-                raw_lines.append(match.group(2))
+            # Only process lines starting with "Dialogue:" (case-insensitive)
+            if not line.lower().startswith('dialogue:'):
+                continue
+
+            # Split into max 10 parts (9 commas + text)
+            parts = line.split(',', 9)
+            if len(parts) < 10:
+                continue
+
+            raw_lines.append(parts[9].strip())
 
     processed_lines = []
     for line in raw_lines:
         cleaned = clean_line(line)
         line_fragments = cleaned.split('|')
-
         japanese_fragments = []
         for frag in line_fragments:
             frag_stripped = frag.strip()
             if not frag_stripped:
                 continue
+            # Keep fragments that include hiragana (likely Japanese)
             if RE_HAS_HIRAGANA.search(frag_stripped):
+                # Skip foreign-labeled lines like "Character: English text"
                 if ':' in frag_stripped and RE_FOREIGN_WORD_CHECK.search(frag_stripped):
                     continue
                 japanese_fragments.append(frag_stripped)
-
         if japanese_fragments:
             processed_lines.append("".join(japanese_fragments))
+
     return processed_lines
 
-
+# --- Worker that processes a single anime directory (non-recursive subtitle search) ---
 def process_anime_directory(args: tuple) -> dict:
     """
-    Analyzes all subtitle files for a single anime title, using a shared cache.
+    Analyzes all subtitle files for a single anime title, using a shared kanji_cache.
     Args is a tuple: (dir_path, kanji_cache)
     """
     dir_path, kanji_cache = args
@@ -156,9 +171,10 @@ def process_anime_directory(args: tuple) -> dict:
         print(f"Details: {e}")
         return {}
 
+    # NON-RECURSIVE: only search current directory (no subfolders)
     subtitle_files = []
     for ext in ('*.srt', '*.ass'):
-        subtitle_files.extend(dir_path.rglob(ext))
+        subtitle_files.extend(dir_path.glob(ext))
 
     if not subtitle_files:
         return {}
@@ -184,75 +200,69 @@ def process_anime_directory(args: tuple) -> dict:
                 for token in tokens:
                     lemma = token.dictionary_form()
 
-                    # --- !!! NEW v12 FILTER LOGIC !!! ---
-
-                    # 1. Get POS info for filtering
+                    # --- POS INFO ---
                     pos_tuple = token.part_of_speech()
                     pos_main = pos_tuple[0]
                     pos_sub = pos_tuple[1]
 
-                    # 2. --- RUN ALL "DROP" FILTERS FIRST ---
-
-                    # 2a. Filter Interjections (e.g. "あー", "ええ", "アハハッ")
+                    # --- DROP FILTERS (v12 logic) ---
                     if pos_main == '感動詞':
                         continue
-
-                    # 2b. Filter Foreign Words (e.g. "プアー", "エルウィン")
                     if pos_main == '外国語' or '外国' in pos_tuple:
                         continue
-
-                    # 2c. Filter Proper Nouns
                     if '固有名詞' in pos_tuple:
                         continue
-
-                    # 2d. Filter Onomatopoeia
                     if '擬声語' in pos_tuple or '擬態語' in pos_tuple:
                         continue
-
-                    # 2e. Filter Invalid Sub-types (Numbers, etc.)
                     if pos_sub in INVALID_POS_SUB:
                         continue
 
-                    # 2f. Filter by Character Type
                     if lemma.isdigit():
                         continue
-                    # V12 FIX: Uses updated regex with 'っ' and 'ッ'
                     if not RE_IS_JAPANESE.match(lemma):
                         continue
 
-                    # 2g. --- V12 NOISE FILTER ---
-                    # Filter sound effects/noise mis-tagged as Noun/Adverb
-                    # We check this *before* the POS KEEP filter
+                    # Verb stem filter as in debug: skip if surface shorter than lemma for verbs
+                    surface = token.surface()
+                    if len(surface) < len(lemma) and pos_main == '動詞':
+                        continue
 
-                    # Filter 1: Repetitive sounds (ミーミー, ヘヘヘヘ)
+                    # Lemmatization fix from debug: when surface is kana-only but lemma contains kanji,
+                    # prefer surface (e.g., cases where Sudachi gives kanji lemma but text is kana)
+                    if surface != lemma and RE_IS_KANA_ONLY.match(surface) and RE_KANJI.search(lemma):
+                        lemma = surface
+
+                    # --- Katakana loanword filter (from debug) ---
+                    # If lemma is kana-only and fully katakana (plus ー、ッ、っ) then treat rare ones as loanword/noise
+                    if RE_IS_KANA_ONLY.match(lemma):
+                        # check for katakana-only characters range
+                        if all('\u30A0' <= c <= '\u30FF' or c in 'ーッっ' for c in lemma):
+                            zipf_k = zipf_frequency(lemma, 'ja')
+                            # Rare katakana -> likely not useful; threshold set per debug (4.5)
+                            if zipf_k < 4.5:
+                                continue
+
+                    # --- V12 NOISE FILTERS (keep these) ---
+                    # Repetitive sounds
                     if RE_REPETITIVE_SOUND.match(lemma):
                         continue
 
-                    # Filter 2: Short kana-only noise (ざっ, ぐつ, コレガ)
-                    # Check if it matches the pattern AND is "rare" (low zipf)
+                    # Short kana-only noise (2-4 chars) if zipf below NOISE_ZIPF_THRESHOLD
                     if RE_PURE_KANA_NOISE.match(lemma):
-                        # Don't check kanji words. This filter is for kana noise.
                         if not RE_KANJI.search(lemma):
-                            zipf = zipf_frequency(lemma, 'ja')
-                            # If zipf is 0 (unknown) or below threshold (rare noise)
-                            # then filter it.
-                            if zipf < NOISE_ZIPF_THRESHOLD:
+                            zipf_n = zipf_frequency(lemma, 'ja')
+                            if zipf_n < NOISE_ZIPF_THRESHOLD:
                                 continue
 
-                    # 3. --- RUN "KEEP" FILTER ---
-                    # Now, only keep Nouns, Verbs, Adjectives, Adverbs
+                    # --- KEEP filter ---
                     if pos_main not in VALID_POS_MAIN:
                         continue
 
-                    # 4. --- FINAL CLEANUP FILTERS ---
-                    # Filter single-kana nouns (junk particles)
+                    # Single-kana noun junk filter
                     if len(lemma) == 1 and pos_main == '名詞':
                         continue
 
-                    # 5. --- SCORE THE WORD ---
-                    # V12 Note: We calculate zipf *again* here if it wasn't
-                    # calculated in 2g. This is fine, as 2g only runs
-                    # on a small subset of words.
+                    # --- Scoring ---
                     zipf = zipf_frequency(lemma, 'ja')
                     if zipf == 0.0:
                         continue
@@ -269,6 +279,7 @@ def process_anime_directory(args: tuple) -> dict:
                         all_unique_kanji.update(kanji_in_lemma)
 
             except Exception:
+                # keep going on any tokenization/processing errors
                 continue
 
     if total_files == 0 or total_words == 0:
@@ -307,18 +318,17 @@ def process_anime_directory(args: tuple) -> dict:
 
     raw_kanji_score = kanji_density * avg_kanji_complexity
 
-    # 3. NEW Vocabulary Difficulty (Density)
+    # 3. Vocabulary Difficulty (Density)
     if total_words > 0:
         difficult_word_instances = sum(1 for s in all_word_rarity_scores if s >= DIFFICULTY_THRESHOLD)
         raw_vocab_score = (difficult_word_instances / total_words) * 100
     else:
         raw_vocab_score = 0
 
-    # 🌟 ЧАСТЬ С JSON (ИЗМЕНЕНО) 🌟
-    # Загружаем дополнительную информацию из .kitsuinfo.json
+    # Load optional .kitsuinfo.json (safe)
     kitsu_data = {
         'entry_id': None, 'entry_type': None, 'english_name': None,
-        'japanese_name': None, 'tmdb_id': None, 'anilist_id': None # --- ИЗМЕНЕНО ДЛЯ ANILIST_ID ---
+        'japanese_name': None, 'tmdb_id': None, 'anilist_id': None
     }
     kitsu_info_path = dir_path / ".kitsuinfo.json"
 
@@ -327,21 +337,17 @@ def process_anime_directory(args: tuple) -> dict:
             with open(kitsu_info_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # Безопасно получаем каждое значение
             kitsu_data['entry_id'] = data.get('entry_id')
             kitsu_data['entry_type'] = data.get('entry_type')
             kitsu_data['english_name'] = data.get('english_name')
             kitsu_data['japanese_name'] = data.get('japanese_name')
             kitsu_data['tmdb_id'] = data.get('tmdb_id')
-            kitsu_data['anilist_id'] = data.get('anilist_id') # --- ИЗМЕНЕНО ДЛЯ ANILIST_ID ---
+            kitsu_data['anilist_id'] = data.get('anilist_id')
 
         except (json.JSONDecodeError, Exception):
-            # Пропускаем ошибки чтения или поврежденный JSON, как и просили
             pass
-    # 🌟 КОНЕЦ ЧАСТИ С JSON 🌟
 
-    # --- ИЗМЕНЕНО ---
-    # Добавляем все поля в возвращаемый словарь
+    # Return results dictionary (preserving your original fields)
     return {
         'Anime Title': dir_path.name,
         'entry_id': kitsu_data['entry_id'],
@@ -349,14 +355,14 @@ def process_anime_directory(args: tuple) -> dict:
         'english_name': kitsu_data['english_name'],
         'japanese_name': kitsu_data['japanese_name'],
         'tmdb_id': kitsu_data['tmdb_id'],
-        'anilist_id': kitsu_data['anilist_id'], # --- ИЗМЕНЕНО ДЛЯ ANILIST_ID ---
+        'anilist_id': kitsu_data['anilist_id'],
         'Avg. Words/Episode': avg_words_per_ep,
         'Unique Words': unique_word_count,
         'RawKanjiScore': raw_kanji_score,
         'RawVocabScore': raw_vocab_score,
     }
 
-
+# --- Utility scaler (unchanged) ---
 def min_max_scaler(series: pd.Series, min_val=1, max_val=100) -> pd.Series:
     """Scales a pandas Series to a 1-100 range."""
     if series.max() == series.min():
@@ -365,7 +371,7 @@ def min_max_scaler(series: pd.Series, min_val=1, max_val=100) -> pd.Series:
              (series - series.min()) / (series.max() - series.min())
     return scaled
 
-
+# --- Main entrypoint (unchanged high-level logic, only underlying parsing/filters changed) ---
 def main():
     start_time = time.time()
 
@@ -385,7 +391,7 @@ def main():
     print(f"Vocab Difficulty based on 'Density' (Words >= {DIFFICULTY_THRESHOLD} score).")
     print(
         f"Applying content thresholds: Min {MIN_AVG_WORDS_PER_EP} avg. words/ep, Min {MIN_UNIQUE_WORDS} unique words.")
-    print(f"Applying v12 Noise/Sound filter (Zipf < {NOISE_ZIPF_THRESHOLD})...")
+    print(f"Applying noise filters (Zipf < {NOISE_ZIPF_THRESHOLD}) and katakana loanword filtering...")
 
     with Manager() as manager:
         kanji_cache = manager.dict()
@@ -414,8 +420,6 @@ def main():
     df['Overall Difficulty (1-100)'] = \
         (df['Kanji Difficulty (1-100)'] + df['Vocab Difficulty (1-100)']) / 2
 
-    # --- ИЗМЕНЕНО ---
-    # Добавляем новый столбец 'anilist_id' в итоговый список
     final_columns = [
         'Anime Title',
         'entry_id',
@@ -423,7 +427,7 @@ def main():
         'english_name',
         'japanese_name',
         'tmdb_id',
-        'anilist_id', # --- ИЗМЕНЕНО ДЛЯ ANILIST_ID ---
+        'anilist_id',
         'Avg. Words/Episode',
         'Unique Words',
         'Kanji Difficulty (1-100)',
@@ -434,7 +438,6 @@ def main():
     df_final = df[final_columns].copy()
 
     df_final['Avg. Words/Episode'] = df_final['Avg. Words/Episode'].round(0).astype(int)
-    # Исправлена опечатка в 'Kanji Difficulty (1-1C-100)'
     df_final['Kanji Difficulty (1-100)'] = df_final['Kanji Difficulty (1-100)'].round(1)
     df_final['Vocab Difficulty (1-100)'] = df_final['Vocab Difficulty (1-100)'].round(1)
     df_final['Overall Difficulty (1-100)'] = df_final['Overall Difficulty (1-100)'].round(1)
@@ -449,7 +452,7 @@ def main():
     print("=" * 80)
 
     pd.set_option('display.max_rows', None)
-    pd.set_option('display.max_rows', 200)  # Ограничим вывод в консоль для читаемости
+    pd.set_option('display.max_rows', 200)
     pd.set_option('display.width', 1000)
 
     print("\n### ANIME TITLES SORTED BY DIFFICULTY (Easiest to Hardest) ###")
@@ -465,7 +468,6 @@ def main():
         print("=" * 80)
     except Exception as e:
         print(f"\nWarning: Could not save CSV report. Error: {e}")
-
 
 if __name__ == "__main__":
     main()

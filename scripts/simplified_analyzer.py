@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 """
-Vocabulary Difficulty Debugger (v15)
+Vocabulary Difficulty Debugger (v19)
 
-Fixes the issue where verb stems (like '連れ') are counted as
-full, difficult words because their surface form is shorter than
-their lemma ('連れる').
+Changes:
+1. Only process .ass lines starting with "Dialogue:"
+2. Search only current directory (non-recursive)
+3. Improved .ass parsing with comma splitting
 """
 
 import re
@@ -24,27 +25,26 @@ except ImportError:
     exit(1)
 
 # --- !!! CONFIGURATION !!! ---
-# Убедись, что путь к папке верный!
-TARGET_DIR = "C:/Users/user/Desktop/kitsunekko-mirror/subtitles/Shirokuma Cafe"
+TARGET_DIR = "C:/Users/user/Desktop/kitsunekko-mirror/subtitles/BanG Dream! Ave Mujica"
 DIFFICULTY_THRESHOLD = 5.0
 NOISE_ZIPF_THRESHOLD = 3.5
+DEBUG_MODE = False  # Set to True for detailed debugging
 # --- END CONFIGURATION ---
 
-print(f"--- Using v15 Fix Script (Verb Stem Filter) ---")
+print(f"--- Using v19 Fix Script (Non-recursive + Dialogue-only ASS) ---")
 
-# --- Regex (Same as before) ---
+# --- Regex ---
+# More flexible SRT regex that handles various line ending styles
 RE_SRT = re.compile(
-    r"\d+\r?\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\r?\n(.*?)\r?\n\r?\n",
-    re.DOTALL
+    r"(\d+)\s*[\r\n]+(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})\s*[\r\n]+((?:.*(?:\r\n|\r|\n))*?)(?=\d+\s*[\r\n]+\d{2}:\d{2}:\d{2}|$)",
+    re.MULTILINE
 )
-RE_ASS = re.compile(
-    r"^Dialogue:\s*([^,]*?,){9}(.*)",
-    re.IGNORECASE
-)
+
 RE_TAGS = re.compile(r"<[^>]+>")
 RE_ASS_STYLE = re.compile(r"\{[^}]+\}")
-RE_BRACKETS_WESTERN = re.compile(r"\(.*?\)")
-RE_BRACKETS_JP = re.compile(r"（.*?）")
+RE_NESTED_FURIGANA = re.compile(r'\([ぁ-んァ-ヶー]+\)')
+RE_BRACKETS_WESTERN = re.compile(r"\([^)]*\)")
+RE_BRACKETS_JP = re.compile(r"（[^）]*）")
 RE_SPACING = re.compile(r"[ \t\u3000]+")
 RE_HAS_HIRAGANA = re.compile(r"[\u3040-\u309F]")
 RE_KANJI = re.compile(r"[\u4E00-\u9FFF]")
@@ -56,13 +56,21 @@ RE_IS_KANA_ONLY = re.compile(r'^[\u3040-\u309F\u30A0-\u30FFーッっ]+$')
 
 
 def clean_line(line: str) -> str:
-    line = RE_BRACKETS_WESTERN.sub("", line)
+    """Clean subtitle line with proper handling of nested parentheses."""
+    # First, handle nested furigana: （中野(なかの)） -> （中野）
+    line = RE_NESTED_FURIGANA.sub("", line)
+
+    # Now remove remaining parentheses content
     line = RE_BRACKETS_JP.sub("", line)
+    line = RE_BRACKETS_WESTERN.sub("", line)
+
+    # Continue with other cleaning
     line = RE_ASS_STYLE.sub("", line)
     line = RE_TAGS.sub("", line)
     line = RE_SPACING.sub("", line)
     line = line.replace(r"\N", "|").replace(r"\r\n", "|").replace(r"\n", "|").replace(r"\r", "|")
     line = line.strip()
+
     return line
 
 
@@ -77,12 +85,38 @@ def extract_text_from_file(file_path: Path) -> list[str]:
     raw_lines = []
 
     if file_ext == '.srt':
-        raw_lines = RE_SRT.findall(content)
+        # Extract all subtitle text blocks
+        matches = RE_SRT.findall(content)
+        if DEBUG_MODE:
+            print(f"\nFILE: {file_path.name}")
+            print(f"Found {len(matches)} SRT blocks")
+            if matches:
+                print(f"First match: {matches[0]}")
+
+        # matches[i][3] contains the text content
+        raw_lines = [match[3] for match in matches]
+
     elif file_ext == '.ass':
         for line in content.splitlines():
-            match = RE_ASS.match(line)
-            if match:
-                raw_lines.append(match.group(2))
+            # Only process lines starting with "Dialogue:" (case-insensitive)
+            if not line.lower().startswith('dialogue:'):
+                continue
+
+            # Split into max 10 parts (9 commas + text)
+            parts = line.split(',', 9)
+            if len(parts) < 10:
+                if DEBUG_MODE:
+                    print(f"Skipping invalid ASS line: {line[:50]}...")
+                continue
+
+            raw_lines.append(parts[9].strip())
+
+        if DEBUG_MODE:
+            print(f"\nFILE: {file_path.name}")
+            print(f"Extracted {len(raw_lines)} valid Dialogue lines")
+
+    if DEBUG_MODE and raw_lines:
+        print(f"First 3 raw lines: {raw_lines[:3]}")
 
     processed_lines = []
     for line in raw_lines:
@@ -99,6 +133,12 @@ def extract_text_from_file(file_path: Path) -> list[str]:
                 japanese_fragments.append(frag_stripped)
         if japanese_fragments:
             processed_lines.append("".join(japanese_fragments))
+
+    if DEBUG_MODE:
+        print(f"Processed to {len(processed_lines)} Japanese lines")
+        if processed_lines:
+            print(f"First 3 processed: {processed_lines[:3]}")
+
     return processed_lines
 
 
@@ -112,28 +152,28 @@ def analyze_title_vocabulary():
         return
 
     try:
-        # Режим 'C' для лучшего разделения слов
         tokenizer = Dictionary().create(mode=SplitMode.C)
     except Exception as e:
         print(f"Error: Failed to initialize SudachiPy. {e}")
         return
 
+    # ONLY search current directory (non-recursive)
     subtitle_files = []
     for ext in ('*.srt', '*.ass'):
-        subtitle_files.extend(dir_path.rglob(ext))
+        subtitle_files.extend(dir_path.glob(ext))
 
     if not subtitle_files:
         print("Error: No .srt or .ass files found in this directory.")
         return
 
-    print(f"Found {len(subtitle_files)} subtitle files.")
+    print(f"Found {len(subtitle_files)} subtitle files in current directory only.")
 
     all_word_rarity_scores = []
     word_counts = defaultdict(int)
     word_rarity_map = {}
 
     VALID_POS_MAIN = {'名詞', '動詞', '形容詞', '副詞'}
-    INVALID_POS_SUB = {'数詞', '非自立可能'}  # Keep '非自立可能' as a fallback
+    INVALID_POS_SUB = {'数詞', '非自立可能'}
 
     for file_path in tqdm(subtitle_files, desc="Processing files", unit="file"):
         lines = extract_text_from_file(file_path)
@@ -148,44 +188,40 @@ def analyze_title_vocabulary():
                     pos_main = pos_tuple[0]
                     pos_sub = pos_tuple[1]
 
-                    # 2a. Filter Interjections
+                    # Filter rules
                     if pos_main == '感動詞':
                         continue
-                    # 2b. Filter Foreign Words
                     if pos_main == '外国語' or '外国' in pos_tuple:
                         continue
-                    # 2c. Filter Proper Nouns
                     if '固有名詞' in pos_tuple:
                         continue
-                    # 2d. Filter Onomatopoeia
                     if '擬声語' in pos_tuple or '擬態語' in pos_tuple:
                         continue
-                    # 2e. Filter Invalid Sub-types
                     if pos_sub in INVALID_POS_SUB:
                         continue
 
-                    # 2f. Filter by Character Type
                     if lemma.isdigit():
                         continue
                     if not RE_IS_JAPANESE.match(lemma):
                         continue
 
-                    # --- V15 - NEW VERB STEM FILTER ---
-                    # Ловит основы глаголов, которые не являются полными словами (напр. '連れ' -> '連れる')
-                    # Проверяем, что surface короче lemma И это глагол.
+                    # Verb stem filter
                     if len(surface) < len(lemma) and pos_main == '動詞':
-                        # Мы дополнительно проверяем, является ли эта основа частым словом в виде каны
-                        # Но пока проще всего просто пропустить.
-                        # Если surface короче lemma, то это, скорее всего, неполное спряжение.
                         continue
 
-                    # 2h. --- V13 LEMMATIZATION FIX (still needed for things like 'まう'/'てる') ---
-                    # Если поверхностная форма (surface) только из каны, а лемма (lemma) - с кандзи,
-                    # и они разные, используем более простое surface.
+                    # Lemmatization fix
                     if surface != lemma and RE_IS_KANA_ONLY.match(surface) and RE_KANJI.search(lemma):
                         lemma = surface
 
-                        # 2g. --- V12 NOISE FILTER (on the (potentially) corrected lemma) ---
+                    # NEW: Katakana loanword filter
+                    # Filter rare katakana-only words (likely loanwords like カムバーック)
+                    if RE_IS_KANA_ONLY.match(lemma):
+                        if all('\u30A0' <= c <= '\u30FF' or c in 'ーッっ' for c in lemma):
+                            zipf = zipf_frequency(lemma, 'ja')
+                            if zipf < 4.5:  # Rare katakana = probably loanword
+                                continue
+
+                    # Noise filter
                     if RE_REPETITIVE_SOUND.match(lemma):
                         continue
                     if RE_PURE_KANA_NOISE.match(lemma):
@@ -194,15 +230,12 @@ def analyze_title_vocabulary():
                             if zipf < NOISE_ZIPF_THRESHOLD:
                                 continue
 
-                    # 3. --- RUN "KEEP" FILTER ---
                     if pos_main not in VALID_POS_MAIN:
                         continue
 
-                    # 4. --- FINAL CLEANUP FILTERS ---
                     if len(lemma) == 1 and pos_main == '名詞':
                         continue
 
-                    # 5. --- SCORE THE WORD ---
                     zipf = zipf_frequency(lemma, 'ja')
                     if zipf == 0.0:
                         continue
@@ -216,7 +249,7 @@ def analyze_title_vocabulary():
             except Exception:
                 continue
 
-    # --- Generate Report ---
+    # Generate Report
     print("\n" + "=" * 80)
     print("--- VOCABULARY DEBUG REPORT ---")
     print("=" * 80)
